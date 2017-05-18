@@ -1,8 +1,8 @@
 
 #include <SoftwareSerial.h>
-
 #include "FVlib_Arduino_SIM900_Ubidots_Client.h"
 
+#define MODEM_VERBOSE
 
 #define APN "movistar.es"
 #define USER "MOVISTAR"
@@ -16,7 +16,13 @@ sim900::sim900(char* token) {
   _portSim900.begin(19200);
 }
 
-void sim900::engegaSim900() {
+boolean sim900::setModemOnline() { // Turn on the modem
+  if (!powerUpModem()) return false;
+  if (!inicialitzaPortSerieSim900()) return false;
+  configuraAPN();
+}
+
+boolean sim900::powerUpModem() {
   pinMode(9, OUTPUT);
   digitalWrite(9,LOW);
   delay(1000);
@@ -24,21 +30,28 @@ void sim900::engegaSim900() {
   delay(2000);
   digitalWrite(9,LOW);
   delay(3000);
+  llegirSim900(); // Try to catch some "NORMAL POWER DOWN" answer
+  if ((bufferResposta[0] == 'N') && (bufferResposta[1] == 'P') &&  (bufferResposta[2] == 'D') && (bufferResposta[3] == '\0')) {
+    return false;
+  }
+  return true;
 }
 
-void sim900::inicialitzaPortSerieSim900() {
-   while(!buscaOK()) {
-    Serial.println("Esperant resposta AT...");
+boolean sim900::inicialitzaPortSerieSim900() { // Whait for SIM900 UART to be ready
+  unsigned long enterFunctionTime = millis();
+
+  while(!buscaOK()) {
+    Serial.println("Waiting for modem...");
     _portSim900.println("AT");
     llegirSim900();
+    if ((enterFunctionTime + 20000) > millis()) return 0;
   }
+  return true;
 }
 
 //=============== Inici rutina configuraAPN ==========
-void sim900::configuraAPN() {
-  Serial.println(F("Connectant modem..."));
-
-  while (comprovaCobertura_ATCSQ() == LOW) {
+boolean sim900::configuraAPN() {
+    while (comprovaCobertura_ATCSQ() == LOW) {
   }
 
   // Per comprovar el: ATCGATT
@@ -193,8 +206,11 @@ char* sim900::llegirSim900() {
   while(_portSim900.available()){
     _portSim900.read();
   }
-  if(strstr(bufferResposta,"NORMAL POWER DOWN")!=NULL){
-    engegaSim900();
+  if (strstr(bufferResposta, "NORMAL POWER DOWN") != NULL) {
+    bufferResposta[0] = 'N';
+    bufferResposta[1] = 'P';
+    bufferResposta[2] = 'D';
+    bufferResposta[3] = '\0';
   }
   return bufferResposta;
 }

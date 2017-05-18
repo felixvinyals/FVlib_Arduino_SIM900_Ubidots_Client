@@ -39,11 +39,12 @@
     public:
       sim900(char* token);
 
+
       boolean comprovaCobertura_ATCSQ();
       boolean guardaDada(double value, char* id);
 
 
-      void inicialitzaPortSerieSim900();
+      boolean inicialitzaPortSerieSim900();
 
 
       void configuraAPN();
@@ -55,7 +56,7 @@
       byte cobertura1;
   	byte cobertura2;
 
-      void engegaSim900();
+      boolean setModemOnline();
 
 
   };
