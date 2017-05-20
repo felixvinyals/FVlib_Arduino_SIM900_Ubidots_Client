@@ -2,88 +2,199 @@
 #include <SoftwareSerial.h>
 #include "FVlib_Arduino_SIM900_Ubidots_Client.h"
 
-#define MODEM_VERBOSE
+// Enable this label if you want to se the SIM900 UART verbose
+  #define SIM900_VERBOSE 0
+// Enable this define to see debug coments
+  #define SIM900_DEBUG 1
 
 #define APN "movistar.es"
 #define USER "MOVISTAR"
 #define PASS "MOVISTAR"
+
 char bufferResposta[500];
-byte cobertura1;
-byte cobertura2;
+//unsigned long sim900Watchdog;
 
 sim900::sim900(char* token) {
   _token = token;
   _portSim900.begin(19200);
 }
 
-boolean sim900::setModemOnline() { // Turn on the modem
-  if (!powerUpModem()) return false;
-  if (!inicialitzaPortSerieSim900()) return false;
-  configuraAPN();
+boolean sim900::begin() {
+// ------------------------- (1/3) Powerup -------------------------
+  #if SIM900_DEBUG == 1
+    Serial.print("\n\nStarting SIM900: \n(1/2) Powering up... ");
+  #endif
+  if (!powerUpModem()) {
+    #if SIM900_DEBUG == 1
+      Serial.println("ERROR");
+    #endif
+    return 1;
+  }
+  else {
+    #if SIM900_DEBUG == 1
+      Serial.println("Ok!");
+    #endif
+  }
+
+// ------------------------- (2/3) UART -------------------------
+  #if SIM900_DEBUG == 1
+    Serial.print("(2/2) Initializing SIM900 UART... ");
+  #endif
+  if (initializeSIM900UART() == false) {
+    #if SIM900_DEBUG == 1
+      Serial.println("ERROR");
+    #endif
+    return 2;
+  }
+  else {
+    #if SIM900_DEBUG == 1
+      Serial.println("Ok!");
+    #endif
+    return 0;
+  }
+}
+
+byte sim900::setModemOnline() { // Turn on the modem
+// ------------------------- (3/3) APN -------------------------
+  #if SIM900_DEBUG == 1
+    Serial.print("Setting APN... ");
+  #endif
+  if (!apnConfig()) {
+    #if SIM900_DEBUG == 1
+      Serial.println("ERROR");
+    #endif
+    return 3;
+  }
+  else {
+    #if SIM900_DEBUG == 1
+      Serial.println("Ok!");
+    #endif
+  }
 }
 
 boolean sim900::powerUpModem() {
-  pinMode(9, OUTPUT);
-  digitalWrite(9,LOW);
-  delay(1000);
-  digitalWrite(9,HIGH);
-  delay(2000);
-  digitalWrite(9,LOW);
-  delay(3000);
-  llegirSim900(); // Try to catch some "NORMAL POWER DOWN" answer
-  if ((bufferResposta[0] == 'N') && (bufferResposta[1] == 'P') &&  (bufferResposta[2] == 'D') && (bufferResposta[3] == '\0')) {
-    return false;
+  for (byte contador = 1; contador <= 3; contador++) {
+    pinMode(9, OUTPUT);
+    digitalWrite(9,LOW);
+    delay(1000);
+    digitalWrite(9,HIGH);
+    delay(2000);
+    digitalWrite(9,LOW);
+    delay(3000);
+    llegirSim900(); // Try to catch some "NORMAL POWER DOWN" answer
+    if ((bufferResposta[0] == 'N') && (bufferResposta[1] == 'P') &&  (bufferResposta[2] == 'D') && (bufferResposta[3] == '\0')) {
+      if (contador == 3) {
+        return false;
+      }
+    }
+    else {
+      return true;
+    }
   }
-  return true;
 }
 
-boolean sim900::inicialitzaPortSerieSim900() { // Whait for SIM900 UART to be ready
-  unsigned long enterFunctionTime = millis();
+boolean sim900::initializeSIM900UART() { // Whait for SIM900 UART to be ready
 
-  while(!buscaOK()) {
-    Serial.println("Waiting for modem...");
+  for (byte contador = 0; contador <= 10; contador++) {
     _portSim900.println("AT");
-    llegirSim900();
-    if ((enterFunctionTime + 20000) > millis()) return 0;
+    if (buscaOK() == true) {
+      return true;
+    }
   }
-  return true;
+
 }
 
-//=============== Inici rutina configuraAPN ==========
-boolean sim900::configuraAPN() {
-    while (comprovaCobertura_ATCSQ() == LOW) {
+boolean sim900::apnConfig() {
+    while (getSignalStrengthRSSI(false) == LOW) {
   }
 
   // Per comprovar el: ATCGATT
   while (comprovaAtachedPackedDomindService_ATCGATT() == LOW) {
-    comprovaCobertura_ATCSQ();
+    getSignalStrengthRSSI(false);
   }
 
   while (comprovaSAPBR() == LOW) {
 
   }
-
-  Serial.println(F("Modem online"));
-
 }
 
-boolean sim900::comprovaCobertura_ATCSQ() {
+int sim900::getSignalStrengthRSSI(byte format) {
+  byte cobertura = 0;
+  int contador = 0;
+
   _portSim900.println("AT+CSQ");
   llegirSim900();
-  Serial.print(bufferResposta);
 
-  char caracter = bufferResposta[14];
-  if ((caracter >= '0') && (caracter <= '9')) {
-    byte cobertura = caracter - '0';
-    caracter = bufferResposta[15];
-    if (caracter != ',') cobertura = (cobertura * 10) + (caracter - '0');
+  for(contador = 0; contador < 500; contador++) {
+    if(bufferResposta[contador] == ',') {
+      if((bufferResposta[contador - 2] >= '0') && (bufferResposta[contador - 2] <= '9')) {
+        Serial.println("2caracters trobats");
+        cobertura = bufferResposta[contador - 2] - '0';
+        cobertura = cobertura * 10;
+      }
+      cobertura = cobertura + (bufferResposta[contador - 1] - '0');
+      if (cobertura == 99) return 0;
+      break;
+    }
+    if (contador == 499) return 255;
+  }
+  if (format == 1) {
+    return cobertura;
+  }
+  else if (format == 2) {
+    if ((cobertura >= 2) && (cobertura <= 9)) return 1;
+    else if ((cobertura >= 10) && (cobertura <= 14)) return 2;
+    else if ((cobertura >= 15) && (cobertura <= 19)) return 3;
+    else if ((cobertura >= 20) && (cobertura <= 30)) return 4;
+  }
+  else if (format == 3) {
+    if (cobertura == 2) return -109;
+    else if (cobertura == 3) return -107;
+    else if (cobertura == 4) return -105;
+    else if (cobertura == 5) return -103;
+    else if (cobertura == 6) return -101;
+    else if (cobertura == 7) return -99;
+    else if (cobertura == 8) return -97;
+    else if (cobertura == 9) return -95;
+    else if (cobertura == 10) return -93;
+    else if (cobertura == 11) return -91;
+    else if (cobertura == 12) return -89;
+    else if (cobertura == 13) return -87;
+    else if (cobertura == 14) return -85;
+    else if (cobertura == 15) return -83;
+    else if (cobertura == 16) return -81;
+    else if (cobertura == 17) return -79;
+    else if (cobertura == 18) return -77;
+    else if (cobertura == 19) return -75;
+    else if (cobertura == 20) return -73;
+    else if (cobertura == 21) return -71;
+    else if (cobertura == 22) return -69;
+    else if (cobertura == 23) return -67;
+    else if (cobertura == 24) return -65;
+    else if (cobertura == 25) return -63;
+    else if (cobertura == 26) return -61;
+    else if (cobertura == 27) return -59;
+    else if (cobertura == 28) return -57;
+    else if (cobertura == 29) return -55;
+    else if (cobertura == 30) return -53;
+  }
+  else return cobertura;
+}
 
-    if (cobertura == 0) {Serial.println(F("No hi ha cobertura")); return LOW;}
-    else if ((cobertura > 0) && (cobertura <= 9)) {Serial.println(F("Cobertura 1/4")); return HIGH;}
-    else if ((cobertura > 9) && (cobertura <= 14)) {Serial.println(F("Cobertura 2/4")); return HIGH;}
-    else if ((cobertura > 14) && (cobertura <= 19)) {Serial.println(F("Cobertura 3/4")); return HIGH;}
-    else if ((cobertura > 19) && (cobertura <= 31)) {Serial.println(F("Cobertura 4/4")); return HIGH;}
-    else {Serial.println(F("Error de cobertura")); return LOW;}
+byte sim900::getSignalStrengthBER() {
+  byte cobertura = 0;
+  int contador = 0;
+
+  _portSim900.println("AT+CSQ");
+  llegirSim900();
+
+  for(contador = 0; contador < 500; contador++) {
+    if(bufferResposta[contador] == ',') {
+      cobertura = (bufferResposta[contador + 1] - '0');
+      if (cobertura == 99) return 0;
+      else return cobertura;
+    }
+    if (contador == 499) return 255;
   }
 }
 
@@ -200,12 +311,15 @@ char* sim900::llegirSim900() {
 
   bufferResposta[idxBufferResposta] = '\0';  // null term
 
-  //Serial.print("\nResposta del Modem: ");
-  //Serial.println(bufferResposta);
+  #if SIM900_VERBOSE == 1
+    Serial.print("\nResposta del Modem: ");
+    Serial.println(bufferResposta);
+  #endif
 
-  while(_portSim900.available()){
+  while (_portSim900.available()) {
     _portSim900.read();
   }
+
   if (strstr(bufferResposta, "NORMAL POWER DOWN") != NULL) {
     bufferResposta[0] = 'N';
     bufferResposta[1] = 'P';
@@ -216,14 +330,15 @@ char* sim900::llegirSim900() {
 }
 
 boolean sim900::buscaOK() {
+  llegirSim900();
   char *p;
   p = strstr (bufferResposta, "OK");
   if (p) {
     //Serial.print("OK Trovat");
-    return(HIGH);
+    return(true);
   } else {
     //Serial.print("No OK");
-    return(LOW);
+    return(false);
   }
 }
 

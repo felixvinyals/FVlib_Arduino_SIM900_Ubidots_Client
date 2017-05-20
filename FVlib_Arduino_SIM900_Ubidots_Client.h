@@ -21,33 +21,34 @@
   #define USER_AGENT  "Ubidots/v1 ArduinoGPRS/1.0"
 
   class sim900 {
+    public:
+      sim900(char* token); // Constructor
+      boolean begin();
+      byte setModemOnline(); // First to run
+      int getSignalStrengthRSSI(byte format);
+      byte getSignalStrengthBER();
+      boolean guardaDada(double value, char* id); // Save data
+
     private:
       char* _token;
-      boolean buscaOK();
-
       #if placaArduino == 1
         SoftwareSerial _portSim900 = SoftwareSerial(7, 8);
       #elif placaArduino == 2
         #define _portSim900 Serial1
       #endif
 
+      boolean powerUpModem();
+      boolean initializeSIM900UART();
+
+      boolean apnConfig();
       boolean comprovaAtachedPackedDomindService_ATCGATT();
       boolean comprovaSAPBR();
+      boolean buscaOK();
+
       bool httpTerm();
       bool httpInit();
 
-    public:
-      sim900(char* token);
 
-
-      boolean comprovaCobertura_ATCSQ();
-      boolean guardaDada(double value, char* id);
-
-
-      boolean inicialitzaPortSerieSim900();
-
-
-      void configuraAPN();
 
       char *llegirSim900();
       char bufferResposta[500];
@@ -56,7 +57,11 @@
       byte cobertura1;
   	byte cobertura2;
 
-      boolean setModemOnline();
+
+
+
+
+
 
 
   };
