@@ -5,14 +5,13 @@
 // Enable this label if you want to se the SIM900 UART verbose
   #define SIM900_VERBOSE 0
 // Enable this define to see debug coments
-  #define SIM900_DEBUG 1
+  #define SIM900_DEBUG 0
 
 #define APN "movistar.es"
 #define USER "MOVISTAR"
 #define PASS "MOVISTAR"
 
 char bufferResposta[500];
-//unsigned long sim900Watchdog;
 
 sim900::sim900(char* token) {
   _token = token;
@@ -54,21 +53,73 @@ boolean sim900::begin() {
   }
 }
 
-byte sim900::setModemOnline() { // Turn on the modem
-// ------------------------- (3/3) APN -------------------------
+byte sim900::setModemOnline() {
+  byte whileAttempts = 20;
+  byte signalStrength = 0;
+
   #if SIM900_DEBUG == 1
-    Serial.print("Setting APN... ");
+    Serial.println("Setting APN:");
   #endif
-  if (!apnConfig()) {
+
+  // ----------------- (1/3) ---------------------
+  // First check if there is enought netwotk strength:
+  while (whileAttempts--) {
+    signalStrength = getSignalStrengthRSSI(2);
     #if SIM900_DEBUG == 1
-      Serial.println("ERROR");
+      Serial.print("(1/3) Checking signal signal Strength... ");
+      Serial.print(signalStrength);
+      Serial.print("/5 ");
+      if (signalStrength == 0) Serial.println("ERROR");
     #endif
-    return 3;
+    if (signalStrength != 0) break;
+    if (whileAttempts == 0) return 1;
+  }
+  #if SIM900_DEBUG == 1
+    Serial.println("Ok!");
+  #endif
+  whileAttempts = 20;
+
+
+  // ----------------- (2/3) ---------------------
+  // Attach to the domine packet service
+  while (whileAttempts--) {
+    _portSim900.println(F("AT+CGATT?"));
+    llegirSim900(false);
+    #if SIM900_DEBUG == 1
+      Serial.print("(2/3) Attaching device to packet domine service... ");
+    #endif
+    if (bufferResposta[19] == '1') {
+      #if SIM900_DEBUG == 1
+        Serial.println("Ok!");
+      #endif
+      break;
+    }
+    else {
+      #if SIM900_DEBUG == 1
+        Serial.println("ERROR");
+      #endif
+    }
+    if (whileAttempts == 0) return 2;
+  }
+  whileAttempts = 20;
+
+  #if SIM900_DEBUG == 1
+    Serial.println("(3/3) Configuring SAPBR:");
+  #endif
+
+  byte SAPBRResult = 255;
+  SAPBRResult = SAPBR();
+  if(SAPBRResult == 0) {
+    #if SIM900_DEBUG == 1
+      Serial.println("SIM900 online!");
+    #endif
+    return SAPBRResult;
   }
   else {
     #if SIM900_DEBUG == 1
-      Serial.println("Ok!");
+      Serial.println("Failed to set the SIM900 online.");
     #endif
+    return SAPBRResult;
   }
 }
 
@@ -81,7 +132,7 @@ boolean sim900::powerUpModem() {
     delay(2000);
     digitalWrite(9,LOW);
     delay(3000);
-    llegirSim900(); // Try to catch some "NORMAL POWER DOWN" answer
+    llegirSim900(false); // Try to catch some "NORMAL POWER DOWN" answer
     if ((bufferResposta[0] == 'N') && (bufferResposta[1] == 'P') &&  (bufferResposta[2] == 'D') && (bufferResposta[3] == '\0')) {
       if (contador == 3) {
         return false;
@@ -94,27 +145,11 @@ boolean sim900::powerUpModem() {
 }
 
 boolean sim900::initializeSIM900UART() { // Whait for SIM900 UART to be ready
-
   for (byte contador = 0; contador <= 10; contador++) {
     _portSim900.println("AT");
-    if (buscaOK() == true) {
+    if (buscaOK(false) == true) {
       return true;
     }
-  }
-
-}
-
-boolean sim900::apnConfig() {
-    while (getSignalStrengthRSSI(false) == LOW) {
-  }
-
-  // Per comprovar el: ATCGATT
-  while (comprovaAtachedPackedDomindService_ATCGATT() == LOW) {
-    getSignalStrengthRSSI(false);
-  }
-
-  while (comprovaSAPBR() == LOW) {
-
   }
 }
 
@@ -123,12 +158,11 @@ int sim900::getSignalStrengthRSSI(byte format) {
   int contador = 0;
 
   _portSim900.println("AT+CSQ");
-  llegirSim900();
+  llegirSim900(false);
 
   for(contador = 0; contador < 500; contador++) {
     if(bufferResposta[contador] == ',') {
       if((bufferResposta[contador - 2] >= '0') && (bufferResposta[contador - 2] <= '9')) {
-        Serial.println("2caracters trobats");
         cobertura = bufferResposta[contador - 2] - '0';
         cobertura = cobertura * 10;
       }
@@ -136,7 +170,7 @@ int sim900::getSignalStrengthRSSI(byte format) {
       if (cobertura == 99) return 0;
       break;
     }
-    if (contador == 499) return 255;
+    if (contador == 499) return 0;
   }
   if (format == 1) {
     return cobertura;
@@ -146,6 +180,7 @@ int sim900::getSignalStrengthRSSI(byte format) {
     else if ((cobertura >= 10) && (cobertura <= 14)) return 2;
     else if ((cobertura >= 15) && (cobertura <= 19)) return 3;
     else if ((cobertura >= 20) && (cobertura <= 30)) return 4;
+    else return 0;
   }
   else if (format == 3) {
     if (cobertura == 2) return -109;
@@ -177,6 +212,7 @@ int sim900::getSignalStrengthRSSI(byte format) {
     else if (cobertura == 28) return -57;
     else if (cobertura == 29) return -55;
     else if (cobertura == 30) return -53;
+    else return 0;
   }
   else return cobertura;
 }
@@ -186,8 +222,7 @@ byte sim900::getSignalStrengthBER() {
   int contador = 0;
 
   _portSim900.println("AT+CSQ");
-  llegirSim900();
-
+  llegirSim900(false);
   for(contador = 0; contador < 500; contador++) {
     if(bufferResposta[contador] == ',') {
       cobertura = (bufferResposta[contador + 1] - '0');
@@ -198,97 +233,80 @@ byte sim900::getSignalStrengthBER() {
   }
 }
 
-boolean sim900::comprovaAtachedPackedDomindService_ATCGATT() {
-  _portSim900.println(F("AT+CGATT?"));
-  llegirSim900();
-  if (bufferResposta[19] == '0') {
-    Serial.print(bufferResposta);
-    Serial.println(F("Check the status of Packet service attach. '0' implies device is not attached and '1' implies device is attached."));
-    return LOW;
+
+
+byte sim900::SAPBR() {
+  byte whileAttempts = 10;
+
+  while(whileAttempts--) {
+    _portSim900.println("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
+    if (buscaOK(false)) break;
+    if (whileAttempts == 0) return 3;
   }
-  else return HIGH;
-}
+  #if SIM900_DEBUG == 1
+    Serial.println(bufferResposta);
+  #endif
+  whileAttempts = 10;
 
-boolean sim900::comprovaSAPBR() {
-  byte intents = 3;
+  while(whileAttempts--) {
+    _portSim900.print(F("AT+SAPBR=3,1,\"APN\",\""));
+    _portSim900.print(APN);
+    _portSim900.println(F("\""));
+    if (buscaOK(false)) break;
+    if (whileAttempts == 0) return 4;
+  }
+  #if SIM900_DEBUG == 1
+    Serial.println(bufferResposta);
+  #endif
+  whileAttempts = 10;
 
-  Serial.println("AT+SAPBR...");
-  _portSim900.println("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
-  llegirSim900();
-  Serial.println(bufferResposta);
+  while(whileAttempts--) {
+    _portSim900.print(F("AT+SAPBR=3,1,\"USER\",\""));
+    _portSim900.print(USER);
+    _portSim900.println(F("\""));
+    if (buscaOK(false)) break;
+    if (whileAttempts == 0) return 5;
+  }
+  #if SIM900_DEBUG == 1
+    Serial.println(bufferResposta);
+  #endif
+  whileAttempts = 10;
 
-  _portSim900.print(F("AT+SAPBR=3,1,\"APN\",\""));
-  _portSim900.print(APN);
-  _portSim900.println(F("\""));
-  llegirSim900();
-  Serial.println(bufferResposta);
+  while(whileAttempts--) {
+    _portSim900.print(F("AT+SAPBR=3,1,\"PWD\",\""));
+    _portSim900.print(PASS);
+    _portSim900.println("\"");
+    if (buscaOK(false)) break;
+    if (whileAttempts == 0) return 6;
+  }
+  #if SIM900_DEBUG == 1
+    Serial.println(bufferResposta);
+  #endif
+  whileAttempts = 10;
 
-  _portSim900.print(F("AT+SAPBR=3,1,\"USER\",\""));
-  _portSim900.print(USER);
-  _portSim900.println(F("\""));
-  llegirSim900();
-  Serial.println(bufferResposta);
-
-  _portSim900.print(F("AT+SAPBR=3,1,\"PWD\",\""));
-  _portSim900.print(PASS);
-  _portSim900.println("\"");
-  llegirSim900();
-  Serial.println(bufferResposta);
-
-  _portSim900.println(F("AT+SAPBR=1,1"));
-  llegirSim900();
-  Serial.println(bufferResposta);
-  while(buscaOK() == LOW) {
-    delay(1500);
+  while(whileAttempts--) {
     _portSim900.println(F("AT+SAPBR=1,1"));
-    llegirSim900();
-    Serial.println(bufferResposta);
-    if (intents-- == 0) return LOW;
+    if (buscaOK(false)) break;
+    if (whileAttempts == 0) return 7;
   }
+  #if SIM900_DEBUG == 1
+    Serial.println(bufferResposta);
+  #endif
+  whileAttempts = 10;
 
-  intents = 3;
-  _portSim900.println(F("AT+SAPBR=2,1"));
-  llegirSim900();
-  Serial.println(bufferResposta);
-  while(buscaOK() == LOW) {
-    delay(1500);
+  while(whileAttempts--) {
     _portSim900.println(F("AT+SAPBR=2,1"));
-    llegirSim900();
+    if (buscaOK(false)) break;
+    if (whileAttempts == 0) return 8;
+  }
+  #if SIM900_DEBUG == 1
     Serial.println(bufferResposta);
-    if (intents-- == 0) return LOW;
-  }
+  #endif
 
-  return HIGH;
-}
-//=============== FI rutina configuraAPN ==========
-
-// Aquesta rutina es perque ens doni el numero de cobertura i l'altre
-void sim900::nivellCobertura() {
-  _portSim900.println("AT+CSQ");
-  llegirSim900();
-  Serial.println(bufferResposta);
-  cobertura1 = 0;
-	cobertura2 = 0;
-
-  char caracter = bufferResposta[14];
-  if ((caracter >= '0') && (caracter <= '9')) {
-    byte cobertura = caracter - '0';
-    cobertura1 = cobertura;
-    caracter = bufferResposta[15];
-    if ((caracter >= '0') && (caracter <= '9')) {
-    	cobertura = (cobertura * 10) + (caracter - '0');
-		cobertura1 = cobertura;
-	}
-	else if (caracter == ',') {
-		caracter = bufferResposta[16];
-		cobertura = caracter - '0';
-		cobertura2 = cobertura;
-	}
-  }
-
+  return 0; // SIM900 is online! Mission accomplished!
 }
 
-char* sim900::llegirSim900() {
+char* sim900::llegirSim900(boolean printReading) {
   unsigned int idxBufferResposta;
   byte timeout = 10; // 10 iteracions de 500ms d'espera
 
@@ -314,6 +332,11 @@ char* sim900::llegirSim900() {
   #if SIM900_VERBOSE == 1
     Serial.print("\nResposta del Modem: ");
     Serial.println(bufferResposta);
+  #else
+    if (printReading == true) {
+      Serial.print("\nResposta del Modem: ");
+      Serial.println(bufferResposta);
+    }
   #endif
 
   while (_portSim900.available()) {
@@ -329,15 +352,16 @@ char* sim900::llegirSim900() {
   return bufferResposta;
 }
 
-boolean sim900::buscaOK() {
-  llegirSim900();
+boolean sim900::buscaOK(boolean printFound) {
+  llegirSim900(false);
   char *p;
   p = strstr (bufferResposta, "OK");
   if (p) {
-    //Serial.print("OK Trovat");
+    if (printFound == true) Serial.print("OK Found!");
     return(true);
-  } else {
-    //Serial.print("No OK");
+  }
+  else {
+    if (printFound == true) Serial.print("No OK");
     return(false);
   }
 }
@@ -345,7 +369,7 @@ boolean sim900::buscaOK() {
 // =======================================================================================================================================
 // =======================================================================================================================================
 
-boolean sim900::guardaDada(double value, char* id) {
+boolean sim900::saveData(double value, char* id) {
   char data[25];
   char val[10];
 
@@ -362,33 +386,33 @@ boolean sim900::guardaDada(double value, char* id) {
   _portSim900.print(F("/values?token="));
   _portSim900.print(_token);
   _portSim900.println("\"");
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
   _portSim900.println(F("AT+HTTPPARA=\"CONTENT\",\"application/json\""));
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
   _portSim900.print(F("AT+HTTPDATA="));
   _portSim900.print(strlen(data));
   _portSim900.print(F(","));
   _portSim900.println(120000);
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
 
   _portSim900.write(data, strlen(data));
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
   _portSim900.println(F("AT+HTTPACTION=1"));  // HTTPACTION=1 is a POST method
   delay(5000);
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
 
   _portSim900.println(F("AT+HTTPREAD"));
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
 
@@ -402,24 +426,24 @@ boolean sim900::guardaDada(double value, char* id) {
 
 bool sim900::httpInit() {
   _portSim900.println(F("AT+HTTPINIT"));
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
   _portSim900.println(F("AT+HTTPPARA=\"CID\",1"));
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
 
   _portSim900.print(F("AT+HTTPPARA=\"UA\","));
   _portSim900.print(USER_AGENT);
   _portSim900.println(F("\""));
-  llegirSim900();
+  llegirSim900(false);
   Serial.println(bufferResposta);
   return false;
 }
 
 bool sim900::httpTerm(){
     _portSim900.println(F("AT+HTTPTERM"));
-    if(strstr(llegirSim900(),"OK")==NULL){
+    if(strstr(llegirSim900(false),"OK")==NULL){
         Serial.println(F("No HTTP to close"));
         return false;
     }

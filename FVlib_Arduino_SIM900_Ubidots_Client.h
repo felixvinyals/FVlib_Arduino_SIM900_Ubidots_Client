@@ -23,47 +23,29 @@
   class sim900 {
     public:
       sim900(char* token); // Constructor
-      boolean begin();
-      byte setModemOnline(); // First to run
+      boolean begin(); // First to run
+      byte setModemOnline();
       int getSignalStrengthRSSI(byte format);
       byte getSignalStrengthBER();
-      boolean guardaDada(double value, char* id); // Save data
+      boolean saveData(double value, char* id); // Save data
 
     private:
-      char* _token;
       #if placaArduino == 1
         SoftwareSerial _portSim900 = SoftwareSerial(7, 8);
       #elif placaArduino == 2
         #define _portSim900 Serial1
       #endif
 
-      boolean powerUpModem();
-      boolean initializeSIM900UART();
-
-      boolean apnConfig();
-      boolean comprovaAtachedPackedDomindService_ATCGATT();
-      boolean comprovaSAPBR();
-      boolean buscaOK();
-
-      bool httpTerm();
-      bool httpInit();
-
-
-
-      char *llegirSim900();
+      char* _token;
       char bufferResposta[500];
 
-      void nivellCobertura();
-      byte cobertura1;
-  	byte cobertura2;
-
-
-
-
-
-
-
+      boolean powerUpModem();
+      boolean initializeSIM900UART();
+      byte SAPBR();
+      boolean buscaOK(boolean printFound);
+      boolean httpTerm();
+      boolean httpInit();
+      char *llegirSim900(boolean printReading);
 
   };
-
 #endif

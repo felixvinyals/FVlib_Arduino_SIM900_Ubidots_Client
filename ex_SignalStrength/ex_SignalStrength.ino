@@ -1,5 +1,7 @@
 #include "FVlib_Arduino_SIM900_Ubidots_Client.h"
 
+sim900 modem("ySh5mOQvxuoMYtXhS2ELVJ1BniTuPW");
+
 void setup() {
   Serial.begin(9600);
   modem.begin();
