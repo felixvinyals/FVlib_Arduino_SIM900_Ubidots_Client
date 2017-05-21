@@ -42,9 +42,9 @@
       boolean powerUpModem();
       boolean initializeSIM900UART();
       byte SAPBR();
-      boolean buscaOk(boolean printFound);
+      boolean buscaOk(boolean printFound, String findWhat);
       boolean httpTerm();
-      boolean httpInit();
+      boolean httpInit(boolean printVerbose);
       char *llegirSim900(boolean printReading);
 
   };
