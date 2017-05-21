@@ -378,7 +378,7 @@ boolean sim900::buscaOk(boolean printFound) {
 byte sim900::sendData(double value, char* id, boolean printVerbose) {
   char data[25];
   char val[10];
-  
+  //Data send check
 
   dtostrf(value,7, 3, val); // Double to char array at val
   httpTerm();
