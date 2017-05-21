@@ -27,7 +27,7 @@
       byte setModemOnline();
       int getSignalStrengthRSSI(byte format);
       byte getSignalStrengthBER();
-      boolean saveData(double value, char* id); // Save data
+      byte sendData(double value, char* id, boolean printVerbose); // Save data
 
     private:
       #if placaArduino == 1
@@ -42,7 +42,7 @@
       boolean powerUpModem();
       boolean initializeSIM900UART();
       byte SAPBR();
-      boolean buscaOK(boolean printFound);
+      boolean buscaOk(boolean printFound);
       boolean httpTerm();
       boolean httpInit();
       char *llegirSim900(boolean printReading);
