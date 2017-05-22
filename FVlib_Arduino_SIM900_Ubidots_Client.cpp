@@ -380,16 +380,17 @@ byte sim900::sendData(double value, char* id, boolean printVerbose) {
   char val[10];
   byte httpInitResult = 255;
 
+  #if SIM900_DEBUG == 1
+    Serial.print("Posting ");
+    Serial.print(value);
+    Serial.print(" at ");
+    Serial.print(id);
+    Serial.print("... ");
+  #endif
+
   dtostrf(value,7, 3, val); // Double to char array at val
   httpTerm();
   sprintf(data,"{\"value\":%s}", val);
-  #if SIM900_DEBUG == 1
-    Serial.print("Posting data@ID: ");
-    Serial.print(data);
-    Serial.print("@");
-    Serial.println(id);
-  #endif
-
   httpInitResult = httpInit(printVerbose);
   if(httpInitResult != 0) return httpInitResult;
 
@@ -417,7 +418,7 @@ byte sim900::sendData(double value, char* id, boolean printVerbose) {
 
   _portSim900.write(data, strlen(data));
   llegirSim900(false);
-  Serial.println(bufferResposta);
+  if (printVerbose == true) Serial.println(bufferResposta);
 
   _portSim900.println(F("AT+HTTPACTION=1"));  // HTTPACTION=1 is a POST method, ha de donar OK
   delay(5000);

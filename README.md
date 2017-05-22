@@ -25,3 +25,9 @@ format:
 - 1: Returns RAW AT netrowk strength
 - 2: Returns 0 to 5 netrowk strength
 - 3: Returns network strength in dB
+
+byte sendData(double value, char* id, boolean printVerbose);
+vale: what you want to post
+id: ubidots variable id
+printverbose: see what server says
+return: 0 if variable has been posted, else error
