@@ -7,7 +7,7 @@
   #include <avr/pgmspace.h>
 
   // En aquest define li hem de dir quina placa Arduino utilitzem
-    #define placaArduino 2 // 1:UNO 2:DUE/MEGA
+    #define placaArduino 1 // 1:UNO 2:DUE/MEGA
 
   #if placaArduino == 1
     #pragma message ( "placa definida: Arduino UNO: SoftwareSerial(7, 8)" )
